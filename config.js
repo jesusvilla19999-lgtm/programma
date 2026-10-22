@@ -1,2 +1,2 @@
-// Incolla qui sotto, tra gli apici, il link del tuo sito Apps Script (quello che finisce con /exec)
-var API_URL = 'INCOLLA_QUI_IL_LINK_EXEC';
+// Link del sito Apps Script (finisce con /exec)
+var API_URL = 'https://script.google.com/macros/s/AKfycbzfmPWq5zXRQnGQOptfju5yJF5IMSZUhCF0-khs5bpR_xo6eQs04flySv7-lspm8AUv/exec';
