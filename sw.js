@@ -1,6 +1,6 @@
 // Service worker: tiene l'app sul telefono per usarla anche senza rete.
 // Quando cambi i file dell'app, aumenta il numero di versione qui sotto.
-const VERSIONE = 'programma-v1';
+const VERSIONE = 'programma-v2';
 const FILE_APP = ['./', './index.html', './config.js', './manifest.webmanifest', './icon-192.png', './icon-512.png', './icon-maskable-512.png', './apple-touch-icon.png'];
 
 self.addEventListener('install', e => {

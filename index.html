@@ -126,6 +126,10 @@ html{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset
 .netbar{font-size:13px;border-radius:8px;padding:8px 12px;background:var(--soft);color:var(--muted)}
 .install{border:1px solid var(--accent);background:var(--accent-soft);color:var(--accent-ink);border-radius:10px;padding:12px 14px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between}
 .install p{margin:0;font-size:14px;min-width:0;flex:1 1 220px}
+#findQ{background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:9px 10px;flex:1 1 200px;min-width:0;font:inherit;color:inherit}
+.findbox{display:flex;flex-direction:column;gap:8px}
+.together{font-size:13px;font-weight:600;color:var(--accent-ink);background:var(--accent-soft);border-radius:6px;padding:2px 8px;align-self:flex-start}
+.findsum{font-size:14px;color:var(--muted);margin:0}
 </style>
 </head>
 <body>
@@ -167,6 +171,7 @@ html{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset
     <div class="seg" role="group" aria-label="Vista">
       <button type="button" id="vMine" aria-pressed="true">La mia settimana</button>
       <button type="button" id="vAll" aria-pressed="false">Programma completo</button>
+      <button type="button" id="vFind" aria-pressed="false">Cerca</button>
     </div>
     <div class="legend" aria-hidden="true">
       <span><i class="tbadge M">M</i>Mattina</span>
@@ -209,12 +214,21 @@ async function parseProgramma(pdfjsLib, data){
     // rectangles (table cells / borders)
     const ol = await page.getOperatorList();
     const O = pdfjsLib.OPS, rects = [];
+    // posizione corrente (tiene conto di eventuali scale/spostamenti del disegno)
+    let ctm=[1,0,0,1,0,0]; const stack=[];
+    const mul=(m,n)=>[m[0]*n[0]+m[2]*n[1], m[1]*n[0]+m[3]*n[1], m[0]*n[2]+m[2]*n[3], m[1]*n[2]+m[3]*n[3], m[0]*n[4]+m[2]*n[5]+m[4], m[1]*n[4]+m[3]*n[5]+m[5]];
+    const pt=(x,y)=>[ctm[0]*x+ctm[2]*y+ctm[4], ctm[1]*x+ctm[3]*y+ctm[5]];
     for (let i=0;i<ol.fnArray.length;i++){
-      if (ol.fnArray[i]!==O.constructPath) continue;
+      const fn=ol.fnArray[i];
+      if (fn===O.save){ stack.push(ctm); continue; }
+      if (fn===O.restore){ ctm=stack.pop()||[1,0,0,1,0,0]; continue; }
+      if (fn===O.transform){ ctm=mul(ctm, ol.argsArray[i]); continue; }
+      if (fn!==O.constructPath) continue;
       const [ops, args] = ol.argsArray[i]; let k=0;
       for (const op of ops){
         if (op===O.rectangle){ const [x,y,w,h]=args.slice(k,k+4); k+=4;
-          const x0=Math.min(x,x+w), x1=Math.max(x,x+w), y0=Math.min(y,y+h), y1=Math.max(y,y+h);
+          const a=pt(x,y), b=pt(x+w,y+h);
+          const x0=Math.min(a[0],b[0]), x1=Math.max(a[0],b[0]), y0=Math.min(a[1],b[1]), y1=Math.max(a[1],b[1]);
           rects.push({x0,x1,top:H-y1,bot:H-y0});
         } else if (op===O.moveTo||op===O.lineTo) k+=2;
         else if (op===O.curveTo) k+=6; else if (op===O.curveTo2||op===O.curveTo3) k+=4;
@@ -278,7 +292,6 @@ async function parseProgramma(pdfjsLib, data){
   return days;
 }
 
-
 (function(){
 var $ = function(id){ return document.getElementById(id); };
 var GIORNI = ['Lunedì','Martedì','Mercoledì','Giovedì','Venerdì','Sabato','Domenica'];
@@ -286,7 +299,7 @@ var MESI = ['gen','feb','mar','apr','mag','giu','lug','ago','set','ott','nov','d
 var S = { index:[], cache:{}, current:null, dayIdx:0, view:'mine', me:'', pending:null, loading:true };
 function lsGet(k){ try{ return localStorage.getItem(k)||''; }catch(e){ return ''; } }
 function lsSet(k,v){ try{ v? localStorage.setItem(k,v) : localStorage.removeItem(k); }catch(e){} }
-S.me = lsGet('umte_me'); S.view = lsGet('umte_view') || 'mine';
+S.me = lsGet('umte_me'); S.view = lsGet('umte_view') || 'mine'; S.find = {people:[], text:''};
 
 // ---- dati: il Foglio Google tramite il sito Apps Script ----
 var CACHE_KEY='umte_cache_v1';
@@ -335,6 +348,14 @@ function errMsg(e){ return (e && e.message) ? e.message : String(e); }
 function isoMonday(year, week){
   var jan4 = new Date(Date.UTC(year,0,4)); var dow = (jan4.getUTCDay()+6)%7;
   return new Date(Date.UTC(year,0,4-dow+(week-1)*7));
+}
+function weekFromDays(giorni){
+  // settimana dedotta dal numero del lunedì scritto nel PDF (es. "Lunedì 26")
+  var g=(giorni[0]&&giorni[0].giorno)||''; var n=+((g.match(/\d{1,2}/)||[])[0]||0); if(!n) return null;
+  var t=new Date(); var base=new Date(Date.UTC(t.getFullYear(),t.getMonth(),t.getDate())); base.setUTCDate(base.getUTCDate()-((base.getUTCDay()+6)%7));
+  var offs=[0,7,-7,14,-14,21,-21];
+  for(var i=0;i<offs.length;i++){ var m=new Date(base); m.setUTCDate(base.getUTCDate()+offs[i]); if(m.getUTCDate()===n){ var w=isoWeek(new Date(m.getUTCFullYear(),m.getUTCMonth(),m.getUTCDate())); return w; } }
+  return null;
 }
 function isoWeek(d){
   var t = new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()));
@@ -423,10 +444,57 @@ function renderMine(w){
   var inWeek = people(w).indexOf(S.me)>=0;
   return (inWeek?'':'<div class="warn">'+esc(S.me)+' non compare in questa settimana.</div>')+'<div style="display:flex;flex-direction:column;gap:10px">'+days+'</div>';
 }
+function renderFind(w){
+  var ps=people(w);
+  return '<div class="panel findbox"><label class="eyebrow" for="findQ">Cerca persone o OdL</label>'+
+    '<div class="pwrow" style="margin:0"><input type="search" id="findQ" list="findList" placeholder="Nome, numero OdL o attività" autocomplete="off"><button class="btn" type="button" id="findAdd">Aggiungi persona</button></div>'+
+    '<datalist id="findList">'+ps.map(function(p){ return '<option value="'+esc(p)+'"></option>'; }).join('')+'</datalist>'+
+    '<div class="who" id="findChips"></div>'+
+    '<p class="hint" style="margin:0">Aggiungi una o più persone per vedere in quali giorni lavorano e con chi. Puoi anche scrivere un numero OdL o una parola dell\'attività.</p></div>'+
+    '<div id="findRes" style="display:flex;flex-direction:column;gap:10px"></div>';
+}
+function findChipsHtml(){
+  return S.find.people.map(function(p){ return '<button type="button" class="chip me" data-rmp="'+esc(p)+'" title="Togli">'+esc(p)+' ✕</button>'; }).join('');
+}
+function findResults(w){
+  var sel=S.find.people, q=(S.find.text||'').trim().toLowerCase();
+  if(!sel.length && !q) return '<div class="panel empty">Aggiungi una o più persone, oppure scrivi un numero OdL.</div>';
+  var out=[], tot=0, ti0=todayIdx(w), seen={};
+  w.giorni.forEach(function(g,i){ var d=dayParts(w,i); var rows=[];
+    g.turni.forEach(function(t){ t.attivita.forEach(function(a){
+      var hitP=a.persone.filter(function(p){ return sel.indexOf(p)>=0; });
+      var hitQ=!!q && ((a.odl||'').toLowerCase().indexOf(q)>=0 || (a.attivita||'').toLowerCase().indexOf(q)>=0 || (a.note||'').toLowerCase().indexOf(q)>=0 || a.persone.some(function(p){ return p.toLowerCase().indexOf(q)>=0; }));
+      if(hitP.length||hitQ){ rows.push({t:t,a:a,hit:hitP}); hitP.forEach(function(p){ seen[p]=(seen[p]||0)+1; }); }
+    }); });
+    if(!rows.length) return; tot+=rows.length;
+    var body=rows.map(function(x){ var ti=turnoInfo(x.t.turno), a=x.a;
+      var info=[ti.nome+(ti.sub?' '+ti.sub:''), a.odl?'OdL '+a.odl:''].filter(Boolean).join(' · ');
+      return '<div class="mi"><div class="row1"><span class="tbadge '+ti.k+'" title="'+esc(ti.nome)+'">'+ti.k+'</span><span class="what">'+esc(a.attivita||'Attività non indicata')+'</span></div>'+
+        '<div class="row1"><span class="odl">'+esc(info)+'</span></div>'+
+        (x.hit.length>1?'<span class="together">Insieme: '+x.hit.map(esc).join(', ')+'</span>':'')+
+        '<div class="who">'+a.persone.map(function(p){ return '<button type="button" class="chip'+(sel.indexOf(p)>=0?' me':'')+'" data-addp="'+esc(p)+'">'+esc(p)+'</button>'; }).join('')+'</div>'+
+        (a.note?'<div class="act" style="padding:0;border:0"><div class="note">'+esc(a.note)+'</div></div>':'')+'</div>'; }).join('');
+    out.push('<div class="myday'+(ti0===i?' today':'')+'"><div class="dcol"><span class="dn">'+esc(d.short)+'</span><span class="dd">'+esc(d.num)+'</span></div><div class="items">'+body+'</div></div>');
+  });
+  var miss=sel.filter(function(p){ return !seen[p]; });
+  var sum='<p class="findsum">'+tot+(tot===1?' attività trovata':' attività trovate')+' in questa settimana'+(miss.length?' · non compare: '+miss.map(esc).join(', '):'')+'</p>';
+  return sum+(out.join('')||'<div class="panel empty">Nessun risultato in questa settimana.</div>');
+}
+function updateFind(){
+  var w=cur(); if(!w || !$('findRes')) return;
+  $('findChips').innerHTML=findChipsHtml(); $('findRes').innerHTML=findResults(w);
+}
+function findAddPerson(name){
+  var w=cur(); if(!w) return false; var ps=people(w); var n=(name||'').trim().toLowerCase(); if(!n) return false;
+  var m=ps.filter(function(p){ return p.toLowerCase()===n; })[0] || (ps.filter(function(p){ return p.toLowerCase().indexOf(n)===0; }).length===1 ? ps.filter(function(p){ return p.toLowerCase().indexOf(n)===0; })[0] : null);
+  if(!m) return false;
+  if(S.find.people.indexOf(m)<0) S.find.people.push(m);
+  S.find.text=''; if($('findQ')) $('findQ').value=''; updateFind(); return true;
+}
 function render(){
   renderWeekSel(); renderPersonSel();
   var w=cur(); var main=$('main');
-  $('vMine').setAttribute('aria-pressed', S.view==='mine'); $('vAll').setAttribute('aria-pressed', S.view==='all');
+  $('vMine').setAttribute('aria-pressed', S.view==='mine'); $('vAll').setAttribute('aria-pressed', S.view==='all'); $('vFind').setAttribute('aria-pressed', S.view==='find');
   $('controls').hidden = !S.index.length; $('viewBar').hidden=!w;
   if(S.loading){ main.innerHTML='<div class="loading">Caricamento…</div>'; $('manage').hidden=true; return; }
   if(!w){
@@ -436,7 +504,8 @@ function render(){
   }
   $('title').innerHTML = 'Settimana <span class="wk">'+w.settimana+'</span> <span style="font-weight:500;font-size:.6em;color:var(--muted)">'+esc(weekRange(w))+'</span>';
   if(S.dayIdx>=w.giorni.length) S.dayIdx=0;
-  main.innerHTML = S.view==='mine'? renderMine(w) : renderAll(w);
+  main.innerHTML = S.view==='mine'? renderMine(w) : S.view==='find' ? renderFind(w) : renderAll(w);
+  if(S.view==='find'){ $('findQ').value=S.find.text; updateFind(); }
   $('manage').hidden = false;
   var when = w.caricatoIl ? new Date(w.caricatoIl) : null;
   $('metaLine').textContent = w.file? 'File: '+w.file+(when && !isNaN(when)?' · caricato il '+when.toLocaleDateString('it-IT'):'') : '';
@@ -468,6 +537,9 @@ function loadIndex(selectId){
 
 // ---- eventi ----
 document.addEventListener('click', function(e){
+  var f=e.target.closest('[data-addp],[data-rmp]');
+  if(f){ if(f.dataset.addp){ if(S.find.people.indexOf(f.dataset.addp)<0) S.find.people.push(f.dataset.addp); } else { S.find.people=S.find.people.filter(function(p){ return p!==f.dataset.rmp; }); } updateFind(); return; }
+  if(e.target.id==='findAdd'){ if(!findAddPerson($('findQ').value)) setStatus('Nessuna persona con questo nome in questa settimana.', true); else setStatus(''); return; }
   var t=e.target.closest('[data-day],[data-person],[data-act]'); if(!t) return;
   if(t.dataset.day!=null){ S.dayIdx=+t.dataset.day; render(); }
   else if(t.dataset.person){ setMe(t.dataset.person); S.view='mine'; lsSet('umte_view',S.view); render(); window.scrollTo(0,0); }
@@ -480,6 +552,9 @@ $('personSel').addEventListener('change', function(e){ setMe(e.target.value); re
 $('weekSel').addEventListener('change', function(e){ openWeek(e.target.value); });
 $('vMine').addEventListener('click',function(){ S.view='mine'; lsSet('umte_view',S.view); render(); });
 $('vAll').addEventListener('click',function(){ S.view='all'; lsSet('umte_view',S.view); render(); });
+$('vFind').addEventListener('click',function(){ S.view='find'; lsSet('umte_view',S.view); render(); });
+document.addEventListener('input', function(e){ if(e.target.id==='findQ'){ var v=e.target.value; var w=cur(); if(w && people(w).indexOf(v)>=0){ findAddPerson(v); return; } S.find.text=v; updateFind(); } });
+document.addEventListener('keydown', function(e){ if(e.target.id==='findQ' && e.key==='Enter'){ e.preventDefault(); findAddPerson(e.target.value); } });
 $('uploadBtn').addEventListener('click',function(){ $('file').click(); });
 $('delBtn').addEventListener('click',function(){ $('delBox').hidden=false; $('delBtn').hidden=true; $('delPw').value=lsGet('umte_pw'); $('delPw').focus(); });
 $('delCancel').addEventListener('click',function(){ $('delBox').hidden=true; $('delBtn').hidden=false; });
@@ -501,7 +576,7 @@ $('file').addEventListener('change', function(e){
     var nAtt = giorni.reduce(function(n,g){ return n+g.turni.reduce(function(m,t){ return m+t.attivita.length; },0); },0);
     if(!giorni.length || !nAtt) throw new Error('Non ho trovato la tabella Turno / Attività / OdL / Personale nel file. Controlla che sia il programma attività settimanale.');
     var m = f.name.match(/(\d{1,2})\s*[-_ ]\s*(20\d{2})/);
-    var now = isoWeek(new Date());
+    var now = weekFromDays(giorni) || isoWeek(new Date());
     var week = { anno: m? +m[2] : now.year, settimana: m? +m[1] : now.week, file: f.name, caricatoIl: new Date().toISOString(), giorni: giorni };
     S.pending = { week: week, fromName: !!m };
     showPreview(); setStatus('');
