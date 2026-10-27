@@ -561,14 +561,14 @@ function calItems(w,i,p){
   return out;
 }
 // ---- trasferte nucleo di Udine ----
-var NUCLEO_UD=['villa','scialino','saccomando','vitiello','comugnaro','princi','sangineto','foschiatto','purino','de salvatore','marino','piasentin','vinazza','gabrieli','vitale'];
+var NUCLEO_UD=['villa','scialino','saccomando','vitiello','vitello','comugnaro','princi','sangineto','foschiatto','purino','de salvatore','marino','piasentin','vinazza','gabrieli','vitale'];
 // luoghi oltre PM Vat (verso Tarvisio), oltre Basiliano (verso Sacile), da San Giovanni al Natisone (verso Trieste)
 var TR_SI=['tricesimo','reana','tarcento','artegna','magnano','gemona','gem','osoppo','oso','venzone','carnia','car','moggio','resiutta','chiusaforte','dogna','pontebba','pbba','pbb','ugovizza','ugo','valbruna','camporosso','tarvisio','tar','boscoverde',
   'codroipo','casarsa','pordenone','fontanafredda','sacile','portogruaro','spilimbergo','maniago','cordenons','venezia','mestre','treviso','conegliano',
-  'san giovanni al natisone','s. giovanni al natisone','sgn','cormons','capriva','gorizia','sagrado','monfalcone','trieste','ts','umtets'];
+  'san giovanni al natisone','s. giovanni al natisone','sgn','cormons','capriva','gorizia','sagrado','monfalcone','trieste','ts','umtets','cervignano','zdb','zuc dal bor','zuc dal bôr','zuck del bor'];
 // da valutare caso per caso
-var TR_VAL=['basiliano','vat','palmanova','cervignano'];
-var TR_NOMI={gem:'Gemona',oso:'Osoppo',car:'Carnia',pbba:'Pontebba',pbb:'Pontebba',ugo:'Ugovizza',tar:'Tarvisio/Tarcento',ts:'Trieste',umtets:'Trieste',sgn:'San Giovanni al Natisone','s. giovanni al natisone':'San Giovanni al Natisone',vat:'PM Vat'};
+var TR_VAL=['basiliano','vat'];
+var TR_NOMI={gem:'Gemona',oso:'Osoppo',car:'Carnia',pbba:'Pontebba',pbb:'Pontebba',ugo:'Ugovizza',tar:'Tarvisio/Tarcento',ts:'Trieste',umtets:'Trieste',sgn:'San Giovanni al Natisone','s. giovanni al natisone':'San Giovanni al Natisone',vat:'PM Vat',zdb:'Zuc dal Bor'};
 function inNucleo(p){ return NUCLEO_UD.indexOf((p||'').trim().toLowerCase())>=0; }
 function trFind(text,list){
   var t=(text||'').toLowerCase();
