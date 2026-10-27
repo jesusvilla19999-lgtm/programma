@@ -153,6 +153,13 @@ html{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset
 .calleg .lw{background:var(--accent-soft);border:1px solid var(--accent)}
 .calleg .ln{border:1px dashed var(--line)}
 .modtag{font-size:11px;font-weight:600;color:var(--accent-ink);background:var(--accent-soft);border-radius:4px;padding:1px 6px;margin-left:6px}
+.cday.tr{background:rgba(214,69,65,.2);border-color:#d64541}
+.cday.trv{background:repeating-linear-gradient(135deg,rgba(214,69,65,.16) 0 5px,transparent 5px 10px);border:1px dashed #d64541}
+.calleg .ltr{background:rgba(214,69,65,.2);border:1px solid #d64541}
+.calleg .ltv{border:1px dashed #d64541;background:repeating-linear-gradient(135deg,rgba(214,69,65,.2) 0 3px,transparent 3px 6px)}
+.trtag{align-self:flex-start;font-size:12px;font-weight:600;border-radius:6px;padding:2px 8px;border:1px solid #d64541}
+.trtag.si{background:rgba(214,69,65,.16)}
+.trtag.val{border-style:dashed}
 .btn.small{padding:4px 10px;font-size:13px}
 .calform{gap:8px}
 .calform label{display:flex;flex-direction:column;gap:4px}
@@ -465,7 +472,7 @@ function renderMine(w){
       var info=[ti.nome+(ti.sub?' '+ti.sub:''), a.odl?'OdL '+a.odl:''].filter(Boolean).join(' · ');
       return '<div class="mi"><div class="row1"><span class="tbadge '+ti.k+'" title="'+esc(ti.nome)+'">'+ti.k+'</span><span class="what">'+esc(a.attivita||'Attività non indicata')+'</span></div>'+
         '<div class="row1"><span class="odl">'+esc(info)+'</span></div>'+
-        '<div class="with">'+(others.length?'Con: '+others.map(function(p){ return '<b>'+esc(p)+'</b>'; }).join(', '):'Da solo')+'</div>'+
+        (inNucleo(S.me)?trTag(a):'')+'<div class="with">'+(others.length?'Con: '+others.map(function(p){ return '<b>'+esc(p)+'</b>'; }).join(', '):'Da solo')+'</div>'+
         (a.note?'<div class="act" style="padding:0;border:0"><div class="note">'+esc(a.note)+'</div></div>':'')+'</div>'; }).join('')
       : '<div class="free">Non compari nel programma</div>';
     return '<div class="myday'+(ti0===i?' today':'')+'"><div class="dcol"><span class="dn">'+esc(d.short)+'</span><span class="dd">'+esc(d.num)+'</span></div><div class="items">'+body+'</div></div>'; }).join('');
@@ -553,6 +560,41 @@ function calItems(w,i,p){
   g.turni.forEach(function(t,ti){ t.attivita.forEach(function(a,ai){ if(!p || a.persone.indexOf(p)>=0) out.push({t:t,a:a,ti:ti,ai:ai}); }); });
   return out;
 }
+// ---- trasferte nucleo di Udine ----
+var NUCLEO_UD=['villa','scialino','saccomando','vitiello','comugnaro','princi','sangineto','foschiatto','purino','de salvatore','marino','piasentin','vinazza','gabrieli','vitale'];
+// luoghi oltre PM Vat (verso Tarvisio), oltre Basiliano (verso Sacile), da San Giovanni al Natisone (verso Trieste)
+var TR_SI=['tricesimo','reana','tarcento','artegna','magnano','gemona','gem','osoppo','oso','venzone','carnia','car','moggio','resiutta','chiusaforte','dogna','pontebba','pbba','pbb','ugovizza','ugo','valbruna','camporosso','tarvisio','tar','boscoverde',
+  'codroipo','casarsa','pordenone','fontanafredda','sacile','portogruaro','spilimbergo','maniago','cordenons','venezia','mestre','treviso','conegliano',
+  'san giovanni al natisone','s. giovanni al natisone','sgn','cormons','capriva','gorizia','sagrado','monfalcone','trieste','ts','umtets'];
+// da valutare caso per caso
+var TR_VAL=['basiliano','vat','palmanova','cervignano'];
+var TR_NOMI={gem:'Gemona',oso:'Osoppo',car:'Carnia',pbba:'Pontebba',pbb:'Pontebba',ugo:'Ugovizza',tar:'Tarvisio/Tarcento',ts:'Trieste',umtets:'Trieste',sgn:'San Giovanni al Natisone','s. giovanni al natisone':'San Giovanni al Natisone',vat:'PM Vat'};
+function inNucleo(p){ return NUCLEO_UD.indexOf((p||'').trim().toLowerCase())>=0; }
+function trFind(text,list){
+  var t=(text||'').toLowerCase();
+  for(var i=0;i<list.length;i++){
+    var w=list[i].replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+    if(new RegExp('(^|[^a-zà-ú])'+w+'(?=[^a-zà-ú]|$)').test(t)) return list[i];
+  }
+  return null;
+}
+function trNome(w){ return TR_NOMI[w] || w.replace(/(^|\s)\S/g,function(c){ return c.toUpperCase(); }); }
+function trAuto(a){
+  var tx=(a.attivita||'')+' '+(a.note||''), w=trFind(tx,TR_SI);
+  if(w) return {k:'si',why:trNome(w)};
+  w=trFind(tx,TR_VAL); if(w) return {k:'val',why:trNome(w)};
+  return {k:'no',why:''};
+}
+function trInfo(a){ if(a.trasf==='si') return {k:'si',why:'impostata a mano'}; if(a.trasf==='no') return {k:'no',why:'impostata a mano'}; return trAuto(a); }
+function trTag(a){
+  var i=trInfo(a);
+  if(i.k==='si') return '<span class="trtag si">Trasferta'+(i.why?' · '+esc(i.why):'')+'</span>';
+  if(i.k==='val') return '<span class="trtag val">Trasferta da valutare · '+esc(i.why)+'</span>';
+  return '';
+}
+function trDay(items){
+  var k='no'; items.forEach(function(x){ var i=trInfo(x.a).k; if(i==='si') k='si'; else if(i==='val' && k!=='si') k='val'; }); return k;
+}
 function renderCal(){
   calInit();
   var map=calMap(), p=calP(), set={};
@@ -565,13 +607,13 @@ function renderCal(){
   var t=new Date(), todayKey=new Date(Date.UTC(t.getFullYear(),t.getMonth(),t.getDate())).toISOString().slice(0,10);
   var cells=['L','M','M','G','V','S','D'].map(function(x){ return '<span class="wd">'+x+'</span>'; });
   for(var k=0;k<lead;k++) cells.push('<span></span>');
-  var worked=0;
+  var worked=0, ntr=0, nval=0;
   for(var d=1; d<=n; d++){
     var key=S.cal.y+'-'+('0'+(S.cal.m+1)).slice(-2)+'-'+('0'+d).slice(-2), rec=map[key], cls='cday', inner='';
     if(!rec) cls+=' nodata';
     else {
       var it=calItems(rec.w,rec.i,p);
-      if(p && it.length){ cls+=' work'; worked++;
+      if(p && it.length){ cls+=' work'; worked++; if(inNucleo(p)){ var dk=trDay(it); if(dk==='si'){ cls+=' tr'; ntr++; } else if(dk==='val'){ cls+=' trv'; nval++; } }
         var ks={}; it.forEach(function(x){ ks[turnoInfo(x.t.turno).k]=1; });
         inner='<span class="tb">'+Object.keys(ks).map(function(q){ return '<i class="tbadge '+q+'">'+q+'</i>'; }).join('')+'</span>';
       } else if(!p && it.length) inner='<span class="cnt">'+it.length+'</span>';
@@ -580,8 +622,8 @@ function renderCal(){
     cells.push('<button type="button" class="'+cls+'" data-cd="'+key+'" aria-pressed="'+(S.cal.sel===key)+'"><span class="n">'+d+'</span>'+inner+'</button>');
   }
   var sum = S.cal.loading ? 'Carico le settimane del mese…' :
-    (p ? esc(p)+': '+worked+(worked===1?' giorno lavorato':' giorni lavorati')+' in '+MESI_L[S.cal.m].toLowerCase() : 'Scegli una persona per vedere i suoi giorni lavorati.');
-  var leg='<div class="calleg"><span><i class="lw"></i>Giorno lavorato</span><span><i class="ln"></i>Programma non caricato</span></div>';
+    (p ? esc(p)+': '+worked+(worked===1?' giorno lavorato':' giorni lavorati')+' in '+MESI_L[S.cal.m].toLowerCase()+(inNucleo(p)?' · '+ntr+' in trasferta'+(nval?' · '+nval+' da valutare':''):'') : 'Scegli una persona per vedere i suoi giorni lavorati.');
+  var leg='<div class="calleg"><span><i class="lw"></i>Giorno lavorato</span><span><i class="ln"></i>Programma non caricato</span>'+(inNucleo(p)?'<span><i class="ltr"></i>Trasferta</span><span><i class="ltv"></i>Da valutare</span>':'')+'</div>';
   return head+'<p class="findsum">'+sum+'</p><div class="cal">'+cells.join('')+'</div>'+leg+'</div>'+calDetail(map,p);
 }
 function calDetail(map,p){
@@ -595,7 +637,7 @@ function calDetail(map,p){
     var ti=turnoInfo(x.t.turno), a=x.a, others=a.persone.filter(function(q){ return q!==p; });
     var info=[ti.nome+(ti.sub?' '+ti.sub:''), a.odl?'OdL '+a.odl:''].filter(Boolean).join(' · ');
     return '<div class="mi"><div class="row1"><span class="tbadge '+ti.k+'" title="'+esc(ti.nome)+'">'+ti.k+'</span><span class="what">'+esc(a.attivita||'Attività non indicata')+'</span></div>'+
-      '<div class="row1"><span class="odl">'+esc(info)+'</span>'+(a.mod?'<span class="modtag">modificato</span>':'')+'</div>'+
+      '<div class="row1"><span class="odl">'+esc(info)+'</span>'+(a.mod?'<span class="modtag">modificato</span>':'')+'</div>'+(inNucleo(p)?trTag(a):'')+
       '<div class="with">'+(p?(others.length?'Con: '+others.map(function(q){ return '<b>'+esc(q)+'</b>'; }).join(', '):'Da solo'):a.persone.map(esc).join(', '))+'</div>'+
       (a.note?'<div class="act" style="padding:0;border:0"><div class="note">'+esc(a.note)+'</div></div>':'')+
       '<div><button class="btn small" type="button" data-ced="'+x.ti+'|'+x.ai+'">✎ Modifica</button></div></div>';
@@ -618,7 +660,7 @@ function calForm(rec,x){
     '<label class="eyebrow">OdL<input id="cfO" value="'+esc(a.odl)+'"></label>'+
     '<label class="eyebrow">Persone (separate da virgola)<input id="cfP" value="'+esc(a.persone.join(', '))+'"></label>'+
     '<label class="eyebrow">Note<input id="cfN" value="'+esc(a.note||'')+'"></label>'+
-    (savedPw?'':'<label class="eyebrow">Password per salvare<input type="password" id="cfPw" autocomplete="current-password"></label>')+
+    '<label class="eyebrow">Trasferta<select id="cfTr"><option value="">Automatica'+(function(){ var t=trAuto(a); return t.k==='si'?' (sì · '+esc(t.why)+')':t.k==='val'?' (da valutare · '+esc(t.why)+')':' (no)'; })()+'</option><option value="si"'+(a.trasf==='si'?' selected':'')+'>Sì, è trasferta</option><option value="no"'+(a.trasf==='no'?' selected':'')+'>No, non è trasferta</option></select></label>'+(savedPw?'':'<label class="eyebrow">Password per salvare<input type="password" id="cfPw" autocomplete="current-password"></label>')+
     '<div class="bar"><button class="btn primary" type="button" data-cact="save">Salva</button><button class="btn" type="button" data-cact="cancel">Annulla</button>'+(x?'<button class="btn danger" type="button" data-cact="del">Elimina</button>':'')+'</div></div>';
 }
 function calSave(del){
@@ -630,7 +672,7 @@ function calSave(del){
   if(!del){
     var lab=$('cfT').value, t=g.turni.filter(function(z){ return z.turno===lab; })[0];
     if(!t){ t={turno:lab, attivita:[]}; g.turni.push(t); }
-    var a={attivita:$('cfA').value.trim(), odl:$('cfO').value.trim(), persone:$('cfP').value.split(',').map(function(s){ return s.trim(); }).filter(Boolean), note:$('cfN').value.trim(), mod:new Date().toISOString()};
+    var a={attivita:$('cfA').value.trim(), odl:$('cfO').value.trim(), persone:$('cfP').value.split(',').map(function(s){ return s.trim(); }).filter(Boolean), note:$('cfN').value.trim(), mod:new Date().toISOString()}; if($('cfTr') && $('cfTr').value) a.trasf=$('cfTr').value;
     if(ed.ai>=0 && ed.ti<g.turni.length && g.turni[ed.ti].turno===lab) g.turni[ed.ti].attivita.splice(ed.ai,0,a); else t.attivita.push(a);
   }
   setStatus('Salvataggio in corso…');
