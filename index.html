@@ -130,6 +130,33 @@ html{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset
 .findbox{display:flex;flex-direction:column;gap:8px}
 .together{font-size:13px;font-weight:600;color:var(--accent-ink);background:var(--accent-soft);border-radius:6px;padding:2px 8px;align-self:flex-start}
 .findsum{font-size:14px;color:var(--muted);margin:0}
+.seg{flex-wrap:wrap}
+#viewBar .seg button{padding:8px 11px}
+.calhead{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.calnav{display:flex;align-items:center;gap:8px}
+.calm{font-size:17px;min-width:9.5em;text-align:center}
+#calPsel{flex:1 1 180px;min-width:0}
+.cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
+.cal .wd{font-size:11px;font-weight:600;color:var(--muted);text-align:center}
+.cday{min-height:54px;border:1px solid var(--line);border-radius:8px;background:var(--paper);padding:4px;display:flex;flex-direction:column;align-items:flex-start;gap:3px;font:inherit;color:inherit;cursor:pointer;min-width:0}
+.cday .n{font-weight:600;font-size:14px;line-height:1}
+.cday .cnt{font-size:11px;color:var(--muted)}
+.cday.nodata{background:transparent;color:var(--muted);border-style:dashed}
+.cday.work{background:var(--accent-soft);border-color:var(--accent)}
+.cday.today .n{color:var(--accent)}
+.cday.today{box-shadow:inset 0 -3px 0 var(--accent)}
+.cday[aria-pressed="true"]{outline:2px solid var(--ink);outline-offset:1px}
+.cday .tb{display:flex;flex-wrap:wrap;gap:2px}
+.cday .tbadge{min-width:0;height:16px;padding:0 3px;font-size:10px;border-radius:3px;font-style:normal}
+.calleg{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--muted)}
+.calleg i{display:inline-block;width:12px;height:12px;border-radius:3px;vertical-align:-2px;margin-right:5px}
+.calleg .lw{background:var(--accent-soft);border:1px solid var(--accent)}
+.calleg .ln{border:1px dashed var(--line)}
+.modtag{font-size:11px;font-weight:600;color:var(--accent-ink);background:var(--accent-soft);border-radius:4px;padding:1px 6px;margin-left:6px}
+.btn.small{padding:4px 10px;font-size:13px}
+.calform{gap:8px}
+.calform label{display:flex;flex-direction:column;gap:4px}
+.calform input,.calform textarea,.calform select{font:inherit;color:inherit;background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:8px 10px;text-transform:none;letter-spacing:0;font-weight:400}
 </style>
 </head>
 <body>
@@ -172,6 +199,7 @@ html{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset
       <button type="button" id="vMine" aria-pressed="true">La mia settimana</button>
       <button type="button" id="vAll" aria-pressed="false">Programma completo</button>
       <button type="button" id="vFind" aria-pressed="false">Cerca</button>
+      <button type="button" id="vCal" aria-pressed="false">Calendario</button>
     </div>
     <div class="legend" aria-hidden="true">
       <span><i class="tbadge M">M</i>Mattina</span>
@@ -299,7 +327,7 @@ var MESI = ['gen','feb','mar','apr','mag','giu','lug','ago','set','ott','nov','d
 var S = { index:[], cache:{}, current:null, dayIdx:0, view:'mine', me:'', pending:null, loading:true };
 function lsGet(k){ try{ return localStorage.getItem(k)||''; }catch(e){ return ''; } }
 function lsSet(k,v){ try{ v? localStorage.setItem(k,v) : localStorage.removeItem(k); }catch(e){} }
-S.me = lsGet('umte_me'); S.view = lsGet('umte_view') || 'mine'; S.find = {people:[], text:''};
+S.me = lsGet('umte_me'); S.view = lsGet('umte_view') || 'mine'; S.find = {people:[], text:''}; S.cal={y:null,m:null,p:null,sel:null,edit:null,loading:false,fail:{}};
 
 // ---- dati: il Foglio Google tramite il sito Apps Script ----
 var CACHE_KEY='umte_cache_v1';
@@ -491,10 +519,143 @@ function findAddPerson(name){
   if(S.find.people.indexOf(m)<0) S.find.people.push(m);
   S.find.text=''; if($('findQ')) $('findQ').value=''; updateFind(); return true;
 }
+// ---- calendario del mese ----
+var MESI_L=['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre'];
+function calInit(){ if(S.cal.y==null){ var t=new Date(); S.cal.y=t.getFullYear(); S.cal.m=t.getMonth(); } }
+function calP(){ return S.cal.p!=null ? S.cal.p : (S.me||''); }
+function calDays(w){
+  var m=isoMonday(w.anno,w.settimana);
+  return w.giorni.map(function(g,i){
+    var num=+(((g.giorno||'').match(/\d{1,2}/)||[])[0]||0), k=i;
+    if(num){ for(var j=0;j<7;j++){ var x=new Date(m); x.setUTCDate(m.getUTCDate()+j); if(x.getUTCDate()===num){ k=j; break; } } }
+    var d=new Date(m); d.setUTCDate(m.getUTCDate()+k); return {key:d.toISOString().slice(0,10), i:i};
+  });
+}
+function calWeeks(){
+  var a=Date.UTC(S.cal.y,S.cal.m,1), b=Date.UTC(S.cal.y,S.cal.m+1,1);
+  return S.index.filter(function(e){ var m=+isoMonday(e.anno,e.settimana); return m<b && m+7*864e5>a; });
+}
+function calLoad(){
+  if(S.cal.loading) return;
+  var need=calWeeks().filter(function(e){ return !S.cache[e.id] && !S.cal.fail[e.id]; });
+  if(!need.length) return;
+  S.cal.loading=true;
+  Promise.all(need.map(function(e){ return server('getWeek',e.id).then(function(txt){ if(txt) S.cache[e.id]=JSON.parse(txt); else S.cal.fail[e.id]=1; }).catch(function(){ S.cal.fail[e.id]=1; }); }))
+    .then(function(){ S.cal.loading=false; if(S.view==='cal') render(); });
+}
+function calMap(){
+  var map={};
+  calWeeks().forEach(function(e){ var w=S.cache[e.id]; if(!w) return; calDays(w).forEach(function(x){ map[x.key]={w:w,i:x.i,id:e.id}; }); });
+  return map;
+}
+function calItems(w,i,p){
+  var out=[], g=w.giorni[i]; if(!g) return out;
+  g.turni.forEach(function(t,ti){ t.attivita.forEach(function(a,ai){ if(!p || a.persone.indexOf(p)>=0) out.push({t:t,a:a,ti:ti,ai:ai}); }); });
+  return out;
+}
+function renderCal(){
+  calInit();
+  var map=calMap(), p=calP(), set={};
+  Object.keys(map).forEach(function(k){ people(map[k].w).forEach(function(x){ set[x]=1; }); });
+  if(p) set[p]=1;
+  var ps=Object.keys(set).sort(function(a,b){ return a.localeCompare(b,'it'); });
+  var head='<div class="panel findbox"><div class="calhead"><div class="calnav"><button class="btn" type="button" data-cal="-1" aria-label="Mese precedente">‹</button><strong class="calm">'+MESI_L[S.cal.m]+' '+S.cal.y+'</strong><button class="btn" type="button" data-cal="1" aria-label="Mese successivo">›</button></div>'+
+    '<select id="calPsel" aria-label="Persona"><option value="">— tutte le persone —</option>'+ps.map(function(x){ return '<option'+(x===p?' selected':'')+'>'+esc(x)+'</option>'; }).join('')+'</select></div>';
+  var first=new Date(Date.UTC(S.cal.y,S.cal.m,1)), lead=(first.getUTCDay()+6)%7, n=new Date(Date.UTC(S.cal.y,S.cal.m+1,0)).getUTCDate();
+  var t=new Date(), todayKey=new Date(Date.UTC(t.getFullYear(),t.getMonth(),t.getDate())).toISOString().slice(0,10);
+  var cells=['L','M','M','G','V','S','D'].map(function(x){ return '<span class="wd">'+x+'</span>'; });
+  for(var k=0;k<lead;k++) cells.push('<span></span>');
+  var worked=0;
+  for(var d=1; d<=n; d++){
+    var key=S.cal.y+'-'+('0'+(S.cal.m+1)).slice(-2)+'-'+('0'+d).slice(-2), rec=map[key], cls='cday', inner='';
+    if(!rec) cls+=' nodata';
+    else {
+      var it=calItems(rec.w,rec.i,p);
+      if(p && it.length){ cls+=' work'; worked++;
+        var ks={}; it.forEach(function(x){ ks[turnoInfo(x.t.turno).k]=1; });
+        inner='<span class="tb">'+Object.keys(ks).map(function(q){ return '<i class="tbadge '+q+'">'+q+'</i>'; }).join('')+'</span>';
+      } else if(!p && it.length) inner='<span class="cnt">'+it.length+'</span>';
+    }
+    if(key===todayKey) cls+=' today';
+    cells.push('<button type="button" class="'+cls+'" data-cd="'+key+'" aria-pressed="'+(S.cal.sel===key)+'"><span class="n">'+d+'</span>'+inner+'</button>');
+  }
+  var sum = S.cal.loading ? 'Carico le settimane del mese…' :
+    (p ? esc(p)+': '+worked+(worked===1?' giorno lavorato':' giorni lavorati')+' in '+MESI_L[S.cal.m].toLowerCase() : 'Scegli una persona per vedere i suoi giorni lavorati.');
+  var leg='<div class="calleg"><span><i class="lw"></i>Giorno lavorato</span><span><i class="ln"></i>Programma non caricato</span></div>';
+  return head+'<p class="findsum">'+sum+'</p><div class="cal">'+cells.join('')+'</div>'+leg+'</div>'+calDetail(map,p);
+}
+function calDetail(map,p){
+  var key=S.cal.sel; if(!key) return '';
+  var dt=new Date(key+'T00:00:00Z'), title=GIORNI[(dt.getUTCDay()+6)%7]+' '+dt.getUTCDate()+' '+MESI_L[dt.getUTCMonth()].toLowerCase();
+  var rec=map[key];
+  if(!rec) return '<div class="panel"><h2 class="eyebrow" style="margin:0 0 6px">'+title+'</h2><p class="hint" style="margin:0">Il programma di questa settimana non è caricato.</p></div>';
+  var it=calItems(rec.w,rec.i,p), ed=S.cal.edit;
+  var rows=it.map(function(x){
+    if(ed && ed.key===key && ed.ti===x.ti && ed.ai===x.ai) return calForm(rec,x);
+    var ti=turnoInfo(x.t.turno), a=x.a, others=a.persone.filter(function(q){ return q!==p; });
+    var info=[ti.nome+(ti.sub?' '+ti.sub:''), a.odl?'OdL '+a.odl:''].filter(Boolean).join(' · ');
+    return '<div class="mi"><div class="row1"><span class="tbadge '+ti.k+'" title="'+esc(ti.nome)+'">'+ti.k+'</span><span class="what">'+esc(a.attivita||'Attività non indicata')+'</span></div>'+
+      '<div class="row1"><span class="odl">'+esc(info)+'</span>'+(a.mod?'<span class="modtag">modificato</span>':'')+'</div>'+
+      '<div class="with">'+(p?(others.length?'Con: '+others.map(function(q){ return '<b>'+esc(q)+'</b>'; }).join(', '):'Da solo'):a.persone.map(esc).join(', '))+'</div>'+
+      (a.note?'<div class="act" style="padding:0;border:0"><div class="note">'+esc(a.note)+'</div></div>':'')+
+      '<div><button class="btn small" type="button" data-ced="'+x.ti+'|'+x.ai+'">✎ Modifica</button></div></div>';
+  }).join('');
+  if(ed && ed.key===key && ed.ai<0) rows+=calForm(rec,null);
+  var empty = !it.length && !(ed && ed.key===key) ? '<div class="mi"><div class="free">'+(p?esc(p)+' non compare nel programma di questo giorno':'Nessuna attività in questo giorno')+'</div></div>' : '';
+  return '<div class="myday"><div class="dcol"><span class="dn">'+esc(GIORNI[(dt.getUTCDay()+6)%7].slice(0,3))+'</span><span class="dd">'+dt.getUTCDate()+'</span></div><div class="items">'+
+    '<div class="mi"><strong>'+title+'</strong></div>'+rows+empty+
+    (ed && ed.key===key ? '' : '<div class="mi"><div><button class="btn" type="button" data-ced="new">+ Aggiungi attività</button></div></div>')+'</div></div>';
+}
+function calForm(rec,x){
+  var g=rec.w.giorni[rec.i], a=x?x.a:{attivita:'',odl:'',persone:calP()?[calP()]:[],note:''};
+  var labels=g.turni.map(function(t){ return t.turno; });
+  ['Turno M','Turno P','Turno N'].forEach(function(l){ if(!labels.some(function(z){ return turnoInfo(z).k===turnoInfo(l).k; })) labels.push(l); });
+  var curT = x ? x.t.turno : labels[0];
+  var savedPw=lsGet('umte_pw');
+  return '<div class="mi calform">'+
+    '<label class="eyebrow">Turno<select id="cfT">'+labels.map(function(l){ var ti=turnoInfo(l); return '<option value="'+esc(l)+'"'+(l===curT?' selected':'')+'>'+esc(ti.nome+(ti.sub?' '+ti.sub:''))+'</option>'; }).join('')+'</select></label>'+
+    '<label class="eyebrow">Attività<textarea id="cfA" rows="2">'+esc(a.attivita)+'</textarea></label>'+
+    '<label class="eyebrow">OdL<input id="cfO" value="'+esc(a.odl)+'"></label>'+
+    '<label class="eyebrow">Persone (separate da virgola)<input id="cfP" value="'+esc(a.persone.join(', '))+'"></label>'+
+    '<label class="eyebrow">Note<input id="cfN" value="'+esc(a.note||'')+'"></label>'+
+    (savedPw?'':'<label class="eyebrow">Password per salvare<input type="password" id="cfPw" autocomplete="current-password"></label>')+
+    '<div class="bar"><button class="btn primary" type="button" data-cact="save">Salva</button><button class="btn" type="button" data-cact="cancel">Annulla</button>'+(x?'<button class="btn danger" type="button" data-cact="del">Elimina</button>':'')+'</div></div>';
+}
+function calSave(del){
+  var ed=S.cal.edit, rec=calMap()[ed.key]; if(!rec) return;
+  var pw=lsGet('umte_pw') || ($('cfPw')&&$('cfPw').value) || '';
+  if(!pw){ setStatus('Inserisci la password per salvare.', true); if($('cfPw')) $('cfPw').focus(); return; }
+  var w=JSON.parse(JSON.stringify(rec.w)), g=w.giorni[rec.i];
+  if(ed.ai>=0) g.turni[ed.ti].attivita.splice(ed.ai,1);
+  if(!del){
+    var lab=$('cfT').value, t=g.turni.filter(function(z){ return z.turno===lab; })[0];
+    if(!t){ t={turno:lab, attivita:[]}; g.turni.push(t); }
+    var a={attivita:$('cfA').value.trim(), odl:$('cfO').value.trim(), persone:$('cfP').value.split(',').map(function(s){ return s.trim(); }).filter(Boolean), note:$('cfN').value.trim(), mod:new Date().toISOString()};
+    if(ed.ai>=0 && ed.ti<g.turni.length && g.turni[ed.ti].turno===lab) g.turni[ed.ti].attivita.splice(ed.ai,0,a); else t.attivita.push(a);
+  }
+  setStatus('Salvataggio in corso…');
+  server('saveWeek', pw, JSON.stringify(w)).then(function(id){
+    lsSet('umte_pw', pw); S.cache[id]=w; S.cal.edit=null;
+    setStatus(del?'Attività eliminata.':'Modifica salvata.'); render();
+  }).catch(function(e){
+    var m=errMsg(e); if(/password/i.test(m)) lsSet('umte_pw','');
+    setStatus('Salvataggio non riuscito: '+m, true); render();
+  });
+}
+function calClick(e){
+  var c=e.target.closest('[data-cal],[data-cd],[data-ced],[data-cact]'); if(!c) return false;
+  if(c.dataset.cal){ S.cal.m+=+c.dataset.cal; if(S.cal.m<0){ S.cal.m=11; S.cal.y--; } if(S.cal.m>11){ S.cal.m=0; S.cal.y++; } S.cal.sel=null; S.cal.edit=null; render(); }
+  else if(c.dataset.cd){ S.cal.sel = S.cal.sel===c.dataset.cd ? null : c.dataset.cd; S.cal.edit=null; render(); }
+  else if(c.dataset.ced){ var v=c.dataset.ced; S.cal.edit = v==='new' ? {key:S.cal.sel,ti:-1,ai:-1} : {key:S.cal.sel,ti:+v.split('|')[0],ai:+v.split('|')[1]}; render(); }
+  else if(c.dataset.cact==='cancel'){ S.cal.edit=null; render(); }
+  else if(c.dataset.cact==='save') calSave(false);
+  else if(c.dataset.cact==='del'){ if(confirm('Eliminare questa attività dal programma?')) calSave(true); }
+  return true;
+}
 function render(){
   renderWeekSel(); renderPersonSel();
   var w=cur(); var main=$('main');
-  $('vMine').setAttribute('aria-pressed', S.view==='mine'); $('vAll').setAttribute('aria-pressed', S.view==='all'); $('vFind').setAttribute('aria-pressed', S.view==='find');
+  $('vMine').setAttribute('aria-pressed', S.view==='mine'); $('vAll').setAttribute('aria-pressed', S.view==='all'); $('vFind').setAttribute('aria-pressed', S.view==='find'); $('vCal').setAttribute('aria-pressed', S.view==='cal');
   $('controls').hidden = !S.index.length; $('viewBar').hidden=!w;
   if(S.loading){ main.innerHTML='<div class="loading">Caricamento…</div>'; $('manage').hidden=true; return; }
   if(!w){
@@ -504,9 +665,9 @@ function render(){
   }
   $('title').innerHTML = 'Settimana <span class="wk">'+w.settimana+'</span> <span style="font-weight:500;font-size:.6em;color:var(--muted)">'+esc(weekRange(w))+'</span>';
   if(S.dayIdx>=w.giorni.length) S.dayIdx=0;
-  main.innerHTML = S.view==='mine'? renderMine(w) : S.view==='find' ? renderFind(w) : renderAll(w);
+  main.innerHTML = S.view==='mine'? renderMine(w) : S.view==='find' ? renderFind(w) : S.view==='cal' ? renderCal() : renderAll(w);
   if(S.view==='find'){ $('findQ').value=S.find.text; updateFind(); }
-  $('manage').hidden = false;
+  $('manage').hidden = S.view==='cal'; if(S.view==='cal'){ $('title').innerHTML='Calendario'; calLoad(); }
   var when = w.caricatoIl ? new Date(w.caricatoIl) : null;
   $('metaLine').textContent = w.file? 'File: '+w.file+(when && !isNaN(when)?' · caricato il '+when.toLocaleDateString('it-IT'):'') : '';
 }
@@ -537,6 +698,7 @@ function loadIndex(selectId){
 
 // ---- eventi ----
 document.addEventListener('click', function(e){
+  if(calClick(e)) return;
   var f=e.target.closest('[data-addp],[data-rmp]');
   if(f){ if(f.dataset.addp){ if(S.find.people.indexOf(f.dataset.addp)<0) S.find.people.push(f.dataset.addp); } else { S.find.people=S.find.people.filter(function(p){ return p!==f.dataset.rmp; }); } updateFind(); return; }
   if(e.target.id==='findAdd'){ if(!findAddPerson($('findQ').value)) setStatus('Nessuna persona con questo nome in questa settimana.', true); else setStatus(''); return; }
@@ -553,6 +715,8 @@ $('weekSel').addEventListener('change', function(e){ openWeek(e.target.value); }
 $('vMine').addEventListener('click',function(){ S.view='mine'; lsSet('umte_view',S.view); render(); });
 $('vAll').addEventListener('click',function(){ S.view='all'; lsSet('umte_view',S.view); render(); });
 $('vFind').addEventListener('click',function(){ S.view='find'; lsSet('umte_view',S.view); render(); });
+$('vCal').addEventListener('click',function(){ S.view='cal'; lsSet('umte_view',S.view); render(); });
+document.addEventListener('change', function(e){ if(e.target.id==='calPsel'){ S.cal.p=e.target.value; S.cal.edit=null; render(); } });
 document.addEventListener('input', function(e){ if(e.target.id==='findQ'){ var v=e.target.value; var w=cur(); if(w && people(w).indexOf(v)>=0){ findAddPerson(v); return; } S.find.text=v; updateFind(); } });
 document.addEventListener('keydown', function(e){ if(e.target.id==='findQ' && e.key==='Enter'){ e.preventDefault(); findAddPerson(e.target.value); } });
 $('uploadBtn').addEventListener('click',function(){ $('file').click(); });
