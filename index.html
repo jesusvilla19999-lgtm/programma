@@ -526,6 +526,10 @@ function findAddPerson(name){
   if(S.find.people.indexOf(m)<0) S.find.people.push(m);
   S.find.text=''; if($('findQ')) $('findQ').value=''; updateFind(); return true;
 }
+// ---- nomi scritti male nel programma: li unisco alla persona giusta ----
+var NOMI_ALIAS={'vitello':'Vitiello','vitale':'Vitale'};
+function fixName(p){ var k=(p||'').trim().toLowerCase(); return NOMI_ALIAS[k] || (p||'').trim(); }
+function fixWeek(w){ if(w && w.giorni) w.giorni.forEach(function(g){ g.turni.forEach(function(t){ t.attivita.forEach(function(a){ var seen={}; a.persone=(a.persone||[]).map(fixName).filter(function(p){ if(seen[p]) return false; seen[p]=1; return true; }); }); }); }); return w; }
 // ---- calendario del mese ----
 var MESI_L=['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre'];
 function calInit(){ if(S.cal.y==null){ var t=new Date(); S.cal.y=t.getFullYear(); S.cal.m=t.getMonth(); } }
@@ -547,7 +551,7 @@ function calLoad(){
   var need=calWeeks().filter(function(e){ return !S.cache[e.id] && !S.cal.fail[e.id]; });
   if(!need.length) return;
   S.cal.loading=true;
-  Promise.all(need.map(function(e){ return server('getWeek',e.id).then(function(txt){ if(txt) S.cache[e.id]=JSON.parse(txt); else S.cal.fail[e.id]=1; }).catch(function(){ S.cal.fail[e.id]=1; }); }))
+  Promise.all(need.map(function(e){ return server('getWeek',e.id).then(function(txt){ if(txt) S.cache[e.id]=fixWeek(JSON.parse(txt)); else S.cal.fail[e.id]=1; }).catch(function(){ S.cal.fail[e.id]=1; }); }))
     .then(function(){ S.cal.loading=false; if(S.view==='cal') render(); });
 }
 function calMap(){
@@ -721,7 +725,7 @@ function openWeek(id){
   S.loading=true; render();
   return server('getWeek', id).then(function(txt){
     S.loading=false;
-    if(txt){ var w=JSON.parse(txt); S.cache[id]=w; S.dayIdx=Math.max(0,todayIdx(w)); }
+    if(txt){ var w=fixWeek(JSON.parse(txt)); S.cache[id]=w; S.dayIdx=Math.max(0,todayIdx(w)); }
     render();
   }).catch(function(e){ S.loading=false; setStatus('Non riesco a leggere la settimana: '+errMsg(e), true); render(); });
 }
@@ -815,7 +819,7 @@ function saveWeek(){
   setStatus('Salvataggio in corso…');
   server('saveWeek', pw, JSON.stringify(w)).then(function(id){
     lsSet('umte_pw', pw);
-    S.cache[id]=w; S.pending=null; $('previewBox').hidden=true;
+    S.cache[id]=fixWeek(w); S.pending=null; $('previewBox').hidden=true;
     setStatus('Settimana '+w.settimana+' salvata.');
     return loadIndex(id);
   }).catch(function(e){
