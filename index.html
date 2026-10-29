@@ -623,15 +623,38 @@ function varImage(file){
   return new Promise(function(res,rej){ var u=URL.createObjectURL(file), im=new Image(); im.onload=function(){ var c=document.createElement('canvas'); c.width=im.naturalWidth; c.height=im.naturalHeight; c.getContext('2d').drawImage(im,0,0); URL.revokeObjectURL(u); res(c); }; im.onerror=function(){ rej(new Error('Immagine non leggibile')); }; im.src=u; });
 }
 function varGrid(c){
+  // righe della tabella: linee orizzontali; colonne: linee verticali cercate riga per riga (le celle unite cambiano da riga a riga)
   var W=c.width, H=c.height, d=c.getContext('2d').getImageData(0,0,W,H).data;
   function dark(x,y){ var k=(y*W+x)*4, r=d[k], g=d[k+1], b=d[k+2]; return (r+g+b)/3<175 && Math.max(r,g,b)-Math.min(r,g,b)<60; }
+  function ink(x,y){ var k=(y*W+x)*4, r=d[k], g=d[k+1], b=d[k+2]; return (r+g+b)/3<235 || Math.max(r,g,b)-Math.min(r,g,b)>40; }
+  function rowInk(y,x0,x1){ var n=0; for(var x=x0;x<x1;x++) if(ink(x,y)) n++; return n; }
   function group(v){ var g=[]; v.forEach(function(a){ if(g.length && a-g[g.length-1][1]<=2) g[g.length-1][1]=a; else g.push([a,a]); }); return g; }
-  var rows=[]; for(var y=0;y<H;y++){ var n=0; for(var x=0;x<W;x++) if(dark(x,y)) n++; if(n>W*0.6) rows.push(y); }
-  var R=group(rows); if(R.length<2) return null;
-  var y0=R[0][0], y1=R[R.length-1][1], cols=[];
-  for(var x2=0;x2<W;x2++){ var m=0; for(var y2=y0;y2<=y1;y2++) if(dark(x2,y2)) m++; if(m>(y1-y0)*0.6) cols.push(x2); }
-  var C=group(cols); if(C.length<2) return null;
-  return {R:R, C:C};
+  var lines=[]; for(var y=0;y<H;y++){ var n=0; for(var x=0;x<W;x++) if(dark(x,y)) n++; if(n>W*0.6) lines.push(y); }
+  var R=group(lines);
+  // bordo mancante sopra o sotto (screenshot tagliato): uso il bordo dell'immagine
+  var top=0; while(top<H && rowInk(top,0,W)<=W*0.01) top++;
+  var bot=H-1; while(bot>0 && rowInk(bot,0,W)<=W*0.01) bot--;
+  if(!R.length || R[0][0]-top>8) R.unshift([top-1,top-1]);
+  if(R[R.length-1][1]<bot-8) R.push([bot+1,bot+1]);
+  var out=[];
+  for(var i=0;i<R.length-1;i++){
+    var ya=R[i][1]+1, yb=R[i+1][0]-1;
+    while(ya<yb && rowInk(ya,0,W)<=W*0.01) ya++;
+    while(yb>ya && rowInk(yb,0,W)<=W*0.01) yb--;
+    if(yb-ya<8) continue;
+    var cols=[]; for(var x2=0;x2<W;x2++){ var m=0; for(var y2=ya;y2<=yb;y2++) if(dark(x2,y2)) m++; if(m>(yb-ya+1)*0.7) cols.push(x2); }
+    var C=group(cols), left=0, right=W-1;
+    while(left<W-1){ var s=0; for(var y3=ya;y3<=yb;y3++) if(ink(left,y3)) s++; if(s) break; left++; }
+    while(right>0){ var s2=0; for(var y4=ya;y4<=yb;y4++) if(ink(right,y4)) s2++; if(s2) break; right--; }
+    if(!C.length || C[0][0]-left>8) C.unshift([left-1,left-1]);
+    if(C[C.length-1][1]<right-8) C.push([right+1,right+1]);
+    var row=[];
+    for(var j=0;j<C.length-1;j++){ var xa=C[j][1]+1, xb=C[j+1][0]-1; if(xb-xa<8) continue;
+      var has=false; for(var y5=ya+2;y5<=yb-2 && !has;y5++) for(var x5=xa+2;x5<=xb-2;x5++){ var k5=(y5*W+x5)*4; if((d[k5]+d[k5+1]+d[k5+2])/3<160){ has=true; break; } }
+      row.push(has?[xa+1,ya,xb,yb+1]:null); }
+    out.push(row);
+  }
+  return out;
 }
 function varCell(c,x0,y0,x1,y1){
   var w=x1-x0, h=y1-y0, k=3, o=document.createElement('canvas'); o.width=w*k; o.height=h*k;
@@ -643,16 +666,13 @@ function varCell(c,x0,y0,x1,y1){
 function varOCR(file, prog){
   var canvas;
   return varImage(file).then(function(c){ canvas=c; return varGetWorker(); }).then(function(wk){
-    var g=varGrid(canvas);
-    if(!g) return [];
-    var jobs=[];
-    for(var i=0;i<g.R.length-1;i++){ var ya=g.R[i][1]+1, yb=g.R[i+1][0]; if(yb-ya<8) continue;
-      var row=[]; jobs.push(row);
-      for(var j=0;j<g.C.length-1;j++){ var xa=g.C[j][1]+1, xb=g.C[j+1][0]; if(xb-xa<8) continue; row.push([xa+2,ya+2,xb-2,yb-2]); } }
-    var total=jobs.reduce(function(s,r){ return s+r.length; },0), done=0, out=[];
+    var jobs=varGrid(canvas);
+    var total=jobs.reduce(function(s,r){ return s+r.filter(Boolean).length; },0), done=0, out=[];
     var p=Promise.resolve();
     jobs.forEach(function(row){ var cells=[]; out.push(cells);
-      row.forEach(function(b){ p=p.then(function(){ return wk.recognize(varCell(canvas,b[0],b[1],b[2],b[3])); }).then(function(r){ cells.push((r.data.text||'').replace(/\s+/g,' ').trim()); done++; if(prog) prog(done,total); }); }); });
+      row.forEach(function(b){
+        if(!b){ p=p.then(function(){ cells.push(''); }); return; }
+        p=p.then(function(){ return wk.recognize(varCell(canvas,b[0],b[1],b[2],b[3])); }).then(function(r){ cells.push((r.data.text||'').replace(/\n+/g,' | ').replace(/[ \t]+/g,' ').trim()); done++; if(prog) prog(done,total); }); }); });
     return p.then(function(){ return out; });
   });
 }
@@ -681,9 +701,9 @@ function varRows(cells){
     var act='', odl=[], ps=[];
     cs.forEach(function(t,j){
       if(!t) return;
-      if(/\d{5,}/.test(t)){ odl.push(t.replace(/[{\[]/g,'(').replace(/[}\]]/g,')')); return; }
-      if(!act && j===0){ act=t; return; }
-      var n=varName(t,kn.people); if(n && ps.indexOf(n)<0) ps.push(n);
+      if(/\d{5,}/.test(t)){ odl.push(t.replace(/\s*\|\s*/g,' ').replace(/[{\[]/g,'(').replace(/[}\]]/g,')')); return; }
+      if(!act && j===0){ act=t.replace(/\s*\|\s*/g,' '); return; }
+      t.split(/\s*[|¦]\s*|\s{2,}/).forEach(function(part){ var n=varName(part,kn.people); if(n && ps.indexOf(n)<0) ps.push(n); });
     });
     if(!ps.length && !act) return;
     if(/^attivit/i.test(act) && !ps.length) return;
@@ -699,14 +719,17 @@ function varSim(r,a){
 }
 function varPlan(w0,i,rows,turno){
   var w=JSON.parse(JSON.stringify(w0)), g=w.giorni[i], ch=[], now=new Date().toISOString(), movers={}, used=[], dropped=[], old=[];
-  rows.forEach(function(r){ r.persone.forEach(function(p){ movers[p.toLowerCase()]=1; }); });
-  rows.forEach(function(r){ r._t=null; var best=null, bs=0;
-    g.turni.forEach(function(t){ t.attivita.forEach(function(a){ if(used.indexOf(a)>=0) return; var s=varSim(r,a); if(s>bs){ bs=s; best=a; } }); });
-    if(best && bs>=0.7){ r._t=best; used.push(best); } });
-  g.turni.forEach(function(t){ t.attivita=t.attivita.filter(function(a){
+  // mattina/giornaliero, pomeriggio e notte sono separati: una persona si sposta solo dentro la stessa fascia
+  function fascia(l){ var k=turnoInfo(l).k; return k==='N'?'N':(k==='P'?'P':'D'); }
+  rows.forEach(function(r){ r._t=null; r._f=fascia(turno); var best=null, bs=0, bt=null;
+    g.turni.forEach(function(t){ t.attivita.forEach(function(a){ if(used.indexOf(a)>=0) return; var s=varSim(r,a); if(s>bs){ bs=s; best=a; bt=t; } }); });
+    if(best && bs>=0.7){ r._t=best; r._f=fascia(bt.turno); used.push(best); } });
+  rows.forEach(function(r){ r.persone.forEach(function(p){ var k=p.toLowerCase(); movers[k]=movers[k]||{}; movers[k][r._f]=1; }); });
+  g.turni.forEach(function(t){ var f=fascia(t.turno); t.attivita=t.attivita.filter(function(a){
     if(used.indexOf(a)>=0) return true;
-    var rem=a.persone.filter(function(p){ return movers[p.toLowerCase()]; }); if(!rem.length) return true;
-    a.persone=a.persone.filter(function(p){ return !movers[p.toLowerCase()]; }); a.mod=now;
+    var mv=function(p){ var m=movers[p.toLowerCase()]; return m && m[f]; };
+    var rem=a.persone.filter(mv); if(!rem.length) return true;
+    a.persone=a.persone.filter(function(p){ return !mv(p); }); a.mod=now;
     if(!a.persone.length){ ch.push({k:'del',t:'Eliminata «'+(a.attivita||'attività')+'»: c\'erano solo '+rem.join(', ')+', ora spostati'}); return false; }
     ch.push({k:'rm',t:'Da «'+(a.attivita||'attività')+'» tolti: '+rem.join(', ')}); return true; }); });
   g.turni=g.turni.filter(function(t){ return t.attivita.length || !t._new; });
